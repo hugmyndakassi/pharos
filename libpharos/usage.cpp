@@ -91,9 +91,12 @@ ThisPtrUsage::ThisPtrUsage(const FunctionDescriptor* f, SymbolicValuePtr tptr,
 
 // This method takes a thisptr as input, and tries to replace variable references for unknown
 // memory reads with the corresponding read expression.
-TreeNodePtr ThisPtrUsage::expand_thisptr(const FunctionDescriptor *fd, SgAsmInstruction* insn, const SymbolicValuePtr this_ptr_in) {
+TreeNodePtr ThisPtrUsage::expand_thisptr(const FunctionDescriptor *fd, SgAsmInstruction* insn, const SymbolicValuePtr this_ptr_in, int depth) {
 
   auto thisptr = this_ptr_in->get_expression ();
+  GDEBUG << "expand_thisptr: insn=" << addr_str(insn->get_address())
+         << " expr=" << *this_ptr_in << LEND;
+  assert(depth <= 1000 && "expand_thisptr: recursion depth exceeded, likely due to a loop in the PDG.  Bailing out.");
 
   // Check for more than one definer?
   if (this_ptr_in->get_defining_instructions ().size () > 1) {
@@ -118,7 +121,9 @@ TreeNodePtr ThisPtrUsage::expand_thisptr(const FunctionDescriptor *fd, SgAsmInst
     assert (aa.value);
     if (!aa.is_mem()) {
       if (seen_rds.count (aa.register_descriptor)) {
-        GDEBUG << "Multiple dependencies of register " << aa.str () << " detected, bailing out." << aa.str () << LEND;
+        GDEBUG << "Multiple dependencies of register " << aa.str ()
+               << " detected in expand_thisptr for insn " << addr_str(insn->get_address())
+               << ". Bailing out." << LEND;
         return thisptr;
       }
       seen_rds.insert (aa.register_descriptor);
@@ -134,8 +139,14 @@ TreeNodePtr ThisPtrUsage::expand_thisptr(const FunctionDescriptor *fd, SgAsmInst
       continue;
 
     if (dep.definer) {
+      // Skip self-loops: a loop-carried definition can make an instruction its own definer.
+      // Recursing into it would be infinite; leave the expression unexpanded instead.
+      if (dep.definer->get_address() == insn->get_address()) {
+        GDEBUG << "expand_thisptr: skipping self-loop at " << addr_str(insn->get_address()) << LEND;
+        continue;
+      }
       // Ok, let's see if we can expand aa.value
-      const auto expanded = expand_thisptr (fd, dep.definer, aa.value);
+      const auto expanded = expand_thisptr (fd, dep.definer, aa.value, depth + 1);
       thisptr = thisptr->substitute (aa.value->get_expression (), expanded);
     } else {
       // Dependency has no definer.  Hopefully it's a memory read
