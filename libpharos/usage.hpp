@@ -88,7 +88,7 @@ class ThisPtrUsage {
   void update_ctor_dtor(OOAnalyzer& ooa) const;
 
   // Ed is not sure this really belongs here
-  static TreeNodePtr expand_thisptr(const FunctionDescriptor *fd, SgAsmInstruction*, const SymbolicValuePtr tptr);
+  static TreeNodePtr expand_thisptr(const FunctionDescriptor *fd, SgAsmInstruction*, const SymbolicValuePtr tptr, int depth = 0);
 };
 
 // The ThisPtrUsage map is keyed by the get_hash() of the TreeNode, which is a 64-bit hash of
